@@ -1,0 +1,27 @@
+project_name: behavior-poisoning
+seed: 7
+output_dir: results
+
+env:
+  num_agents: 3
+  local_ratio: 0.5
+  max_cycles: 25
+  continuous_actions: false
+
+training:
+  run_name: clean_ppo
+  total_timesteps: 500000
+  num_vec_envs: 8
+  learning_rate: 0.0003
+  n_steps: 256
+  batch_size: 1024
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  net_arch: [128, 128]
+  device: auto
+  evaluation_episodes: 5
+  deterministic_eval: true
