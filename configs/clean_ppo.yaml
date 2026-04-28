@@ -9,6 +9,7 @@ env:
   continuous_actions: false
 
 training:
+  algorithm: ppo
   run_name: clean_ppo
   total_timesteps: 500000
   num_vec_envs: 8

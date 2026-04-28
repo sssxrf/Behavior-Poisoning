@@ -27,13 +27,14 @@ where all agents follow the same training procedure and the team reward reflects
 
 ### Clean Baseline Learning Setting
 
-For the first milestone, we use a shared-policy PPO baseline:
+For the first milestone, we use a shared-policy recurrent MAPPO baseline:
 
 - one neural policy is shared across all agents
 - each agent still acts on its own observation
-- the policy is trained on trajectories sampled from the PettingZoo environment
+- the policy is trained on trajectories sampled from the `simple_spread` environment
+- recurrent hidden state helps the baseline match the official MAPPO training setup we are building on
 
-This baseline gives us a stable and reproducible cooperative learner before adding poisoning logic.
+This baseline gives us a stable and reproducible cooperative learner before adding poisoning logic. A legacy PPO path is kept only as a fallback comparison, not as the primary baseline of record.
 
 ### Threat Model for Later Attack Stages
 
@@ -66,7 +67,7 @@ For now, we will use the phrase coordination trap instead of formally claiming a
 
 ## Research Questions
 
-1. Can clean shared-policy PPO learn cooperative landmark coverage reliably in `simple_spread_v3`?
+1. Can clean shared-policy recurrent MAPPO learn cooperative landmark coverage reliably in `simple_spread_v3`?
 2. Can live action manipulation during sampling reduce final team performance more effectively than a naive random-action baseline?
 3. Can a poisoning policy remain close to normal exploration behavior while still pushing the team toward a low-reward coordination pattern?
 4. Does the degraded coordination persist after the attack is removed?
@@ -75,7 +76,7 @@ For now, we will use the phrase coordination trap instead of formally claiming a
 
 ### H1: Clean Coordination
 
-Under clean training, shared-policy PPO will learn a stable cooperative behavior with:
+Under clean training, shared-policy recurrent MAPPO will learn a stable cooperative behavior with:
 
 - higher average team return over time
 - lower collision frequency than early training
@@ -103,7 +104,7 @@ Once the population has adapted to poisoned trajectories, removing the attacker 
 
 - environment: `simple_spread_v3`
 - number of agents: `3`
-- training algorithm: shared-policy PPO
+- training algorithm: shared-policy recurrent MAPPO
 - seed list
 - episode horizon
 - attack budget `p`
@@ -130,10 +131,9 @@ The first working milestone in this repo is:
 1. a documented problem model and hypothesis file
 2. a reproducible Python environment setup
 3. a clean-training scaffold for `simple_spread_v3`
-4. a trainable and evaluable shared-policy PPO baseline
+4. a trainable and evaluable shared-policy recurrent MAPPO baseline
 
 Once this baseline is stable, we can add:
 
-1. random action poisoning during sampling
-2. targeted behavioral poisoning
-3. stealth constraints and comparison plots
+1. full-length comparison runs across clean, random-poisoned, targeted-poisoned, and KL-constrained training
+2. report figures and persistence analysis from `results/analysis`

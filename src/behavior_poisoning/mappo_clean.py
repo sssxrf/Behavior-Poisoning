@@ -7,12 +7,18 @@ from pathlib import Path
 from statistics import mean, pstdev
 import sys
 import time
+import types
 from typing import Any
 
 import numpy as np
 import torch
 
-from behavior_poisoning.config import ExperimentConfig, load_config, save_config_snapshot
+from behavior_poisoning.config import (
+    AttackConfig,
+    ExperimentConfig,
+    load_config,
+    save_config_snapshot,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -129,6 +135,219 @@ class AgentIndicatorMPEEnv:
         return getattr(self.env, item)
 
 
+SUPPORTED_ACTION_POISONING_MODES = {"random_action", "targeted_action"}
+
+
+def _validate_action_poisoning(
+    *,
+    num_agents: int,
+    compromised_agent: int,
+    probability: float,
+) -> None:
+    if compromised_agent < 0 or compromised_agent >= num_agents:
+        raise ValueError(
+            f"compromised_agent must be in [0, {num_agents - 1}], "
+            f"got {compromised_agent}."
+        )
+    if probability < 0.0 or probability > 1.0:
+        raise ValueError(f"probability must be in [0, 1], got {probability}.")
+
+
+def _validate_kl_budget(kl_budget: float | None) -> None:
+    if kl_budget is not None and kl_budget < 0.0:
+        raise ValueError(f"kl_budget must be non-negative or null, got {kl_budget}.")
+
+
+def _validate_target_action(action_space, target_action: int) -> None:
+    if target_action < 0 or target_action >= action_space.n:
+        raise ValueError(
+            f"target_action must be in [0, {action_space.n - 1}], "
+            f"got {target_action}."
+        )
+
+
+def _normalized_probs(probs: np.ndarray) -> np.ndarray:
+    clipped = np.clip(np.asarray(probs, dtype=np.float64), 1e-8, None)
+    return clipped / clipped.sum()
+
+
+def _kl_divergence(q_probs: np.ndarray, p_probs: np.ndarray) -> float:
+    q = _normalized_probs(q_probs)
+    p = _normalized_probs(p_probs)
+    return float(np.sum(q * (np.log(q) - np.log(p))))
+
+
+def _attack_action_distribution(
+    *,
+    mode: str,
+    action_space,
+    target_action: int,
+) -> np.ndarray:
+    if action_space.__class__.__name__ != "Discrete":
+        raise NotImplementedError(
+            "Action poisoning currently supports Discrete actions only."
+        )
+    if mode == "random_action":
+        return np.full(action_space.n, 1.0 / action_space.n, dtype=np.float64)
+    if mode == "targeted_action":
+        _validate_target_action(action_space, target_action)
+        distribution = np.zeros(action_space.n, dtype=np.float64)
+        distribution[target_action] = 1.0
+        return distribution
+    raise ValueError(
+        f"Unsupported action poisoning mode '{mode}'. "
+        f"Expected one of {sorted(SUPPORTED_ACTION_POISONING_MODES)}."
+    )
+
+
+def _kl_constrained_probability(
+    *,
+    clean_probs: np.ndarray,
+    attack_probs: np.ndarray,
+    requested_probability: float,
+    kl_budget: float | None,
+) -> float:
+    _validate_action_poisoning(
+        num_agents=1,
+        compromised_agent=0,
+        probability=requested_probability,
+    )
+    _validate_kl_budget(kl_budget)
+    if requested_probability == 0.0 or kl_budget is None:
+        return requested_probability
+
+    clean = _normalized_probs(clean_probs)
+    attack = _normalized_probs(attack_probs)
+
+    def mixture_kl(alpha: float) -> float:
+        mixed = (1.0 - alpha) * clean + alpha * attack
+        return _kl_divergence(mixed, clean)
+
+    if mixture_kl(requested_probability) <= kl_budget:
+        return requested_probability
+
+    low = 0.0
+    high = requested_probability
+    for _ in range(32):
+        mid = (low + high) / 2.0
+        if mixture_kl(mid) <= kl_budget:
+            low = mid
+        else:
+            high = mid
+    return low
+
+
+def _poison_discrete_actions(
+    actions,
+    action_spaces,
+    *,
+    compromised_agent: int,
+    probability: float,
+    rng: np.random.Generator,
+    mode: str = "random_action",
+    target_action: int = 0,
+) -> tuple[np.ndarray, bool]:
+    action_array = np.asarray(actions, dtype=np.float32).copy()
+    _validate_action_poisoning(
+        num_agents=len(action_spaces),
+        compromised_agent=compromised_agent,
+        probability=probability,
+    )
+    if mode not in SUPPORTED_ACTION_POISONING_MODES:
+        raise ValueError(
+            f"Unsupported action poisoning mode '{mode}'. "
+            f"Expected one of {sorted(SUPPORTED_ACTION_POISONING_MODES)}."
+        )
+
+    if probability == 0.0 or rng.random() >= probability:
+        return action_array, False
+
+    action_space = action_spaces[compromised_agent]
+    if action_space.__class__.__name__ != "Discrete":
+        raise NotImplementedError(
+            "Action poisoning currently supports Discrete actions only."
+        )
+
+    if mode == "random_action":
+        poisoned_action = int(rng.integers(action_space.n))
+    else:
+        _validate_target_action(action_space, target_action)
+        poisoned_action = target_action
+
+    action_array[compromised_agent] = np.eye(
+        action_space.n,
+        dtype=np.float32,
+    )[poisoned_action]
+    return action_array, True
+
+
+def _poison_discrete_action_batch(
+    actions: np.ndarray,
+    clean_action_probs: np.ndarray,
+    action_spaces,
+    attack: AttackConfig,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    poisoned_actions = np.asarray(actions, dtype=np.int64).copy()
+    if not attack.enabled:
+        return poisoned_actions, {"poisoned_count": 0, "mean_effective_probability": 0.0}
+
+    _validate_action_poisoning(
+        num_agents=len(action_spaces),
+        compromised_agent=attack.compromised_agent,
+        probability=attack.probability,
+    )
+    _validate_kl_budget(attack.kl_budget)
+
+    agent_idx = attack.compromised_agent
+    action_space = action_spaces[agent_idx]
+    attack_distribution = _attack_action_distribution(
+        mode=attack.mode,
+        action_space=action_space,
+        target_action=attack.target_action,
+    )
+
+    poisoned_count = 0
+    effective_probabilities: list[float] = []
+    for env_idx in range(poisoned_actions.shape[0]):
+        clean_probs = clean_action_probs[env_idx, agent_idx]
+        effective_probability = _kl_constrained_probability(
+            clean_probs=clean_probs,
+            attack_probs=attack_distribution,
+            requested_probability=attack.probability,
+            kl_budget=attack.kl_budget,
+        )
+        effective_probabilities.append(effective_probability)
+        if rng.random() >= effective_probability:
+            continue
+
+        if attack.mode == "random_action":
+            replacement = int(rng.integers(action_space.n))
+        else:
+            replacement = attack.target_action
+        poisoned_actions[env_idx, agent_idx, 0] = replacement
+        poisoned_count += 1
+
+    return poisoned_actions, {
+        "poisoned_count": poisoned_count,
+        "mean_effective_probability": mean(effective_probabilities)
+        if effective_probabilities
+        else 0.0,
+    }
+
+
+def _should_apply_action_poisoning(config: ExperimentConfig | None) -> bool:
+    if config is None or not config.attack.enabled:
+        return False
+    if config.attack.mode not in SUPPORTED_ACTION_POISONING_MODES:
+        raise ValueError(
+            "MAPPO training currently supports attack.mode in "
+            f"{sorted(SUPPORTED_ACTION_POISONING_MODES)}; "
+            f"got '{config.attack.mode}'."
+        )
+    return True
+
+
 def _prepare_upstream_imports() -> None:
     if not UPSTREAM_ROOT.exists():
         raise FileNotFoundError(
@@ -213,7 +432,12 @@ def _build_mappo_args(config: ExperimentConfig):
     return args
 
 
-def _make_dummy_vec_env(args, *, num_threads: int, seed_base: int):
+def _make_dummy_vec_env(
+    args,
+    *,
+    num_threads: int,
+    seed_base: int,
+):
     _prepare_upstream_imports()
 
     from onpolicy.envs.env_wrappers import DummyVecEnv
@@ -232,6 +456,189 @@ def _make_dummy_vec_env(args, *, num_threads: int, seed_base: int):
         return init_env
 
     return DummyVecEnv([get_env_fn(rank) for rank in range(num_threads)])
+
+
+def _actor_discrete_action_probs(
+    actor,
+    obs,
+    rnn_states,
+    masks,
+) -> np.ndarray:
+    from onpolicy.algorithms.utils.util import check
+
+    obs = check(obs).to(**actor.tpdv)
+    rnn_states = check(rnn_states).to(**actor.tpdv)
+    masks = check(masks).to(**actor.tpdv)
+
+    actor_features = actor.base(obs)
+    if actor._use_naive_recurrent_policy or actor._use_recurrent_policy:
+        actor_features, _ = actor.rnn(actor_features, rnn_states, masks)
+    return actor.act.get_probs(actor_features).detach().cpu().numpy()
+
+
+def _action_log_probs_from_probs(
+    action_probs: np.ndarray,
+    actions: np.ndarray,
+) -> np.ndarray:
+    selected_probs = np.take_along_axis(
+        action_probs,
+        np.asarray(actions, dtype=np.int64),
+        axis=2,
+    )
+    return np.log(np.clip(selected_probs, 1e-8, None)).astype(np.float32)
+
+
+def _ensure_runner_attack_state(runner) -> None:
+    if hasattr(runner, "_action_poisoning_rng"):
+        return
+    runner._action_poisoning_rng = np.random.default_rng(runner.all_args.seed + 9137)
+    runner.action_poisoning_stats = {
+        "poisoned_count": 0,
+        "steps": 0,
+        "effective_probabilities": [],
+    }
+
+
+def _record_runner_attack_stats(runner, stats: dict[str, Any]) -> None:
+    runner.action_poisoning_stats["poisoned_count"] += int(stats["poisoned_count"])
+    runner.action_poisoning_stats["steps"] += 1
+    runner.action_poisoning_stats["effective_probabilities"].append(
+        float(stats["mean_effective_probability"])
+    )
+
+
+def _runner_attack_summary(runner) -> dict[str, Any] | None:
+    if not hasattr(runner, "action_poisoning_stats"):
+        return None
+    effective_probabilities = runner.action_poisoning_stats["effective_probabilities"]
+    return {
+        "poisoned_action_count": runner.action_poisoning_stats["poisoned_count"],
+        "collection_steps": runner.action_poisoning_stats["steps"],
+        "mean_effective_probability": mean(effective_probabilities)
+        if effective_probabilities
+        else 0.0,
+    }
+
+
+@torch.no_grad()
+def _collect_shared_with_action_poisoning(self, step):
+    self.trainer.prep_rollout()
+    flat_share_obs = np.concatenate(self.buffer.share_obs[step])
+    flat_obs = np.concatenate(self.buffer.obs[step])
+    flat_rnn_states = np.concatenate(self.buffer.rnn_states[step])
+    flat_rnn_states_critic = np.concatenate(self.buffer.rnn_states_critic[step])
+    flat_masks = np.concatenate(self.buffer.masks[step])
+
+    action_probs = _actor_discrete_action_probs(
+        self.trainer.policy.actor,
+        flat_obs,
+        flat_rnn_states,
+        flat_masks,
+    )
+    value, action, action_log_prob, rnn_states, rnn_states_critic = (
+        self.trainer.policy.get_actions(
+            flat_share_obs,
+            flat_obs,
+            flat_rnn_states,
+            flat_rnn_states_critic,
+            flat_masks,
+        )
+    )
+
+    values = np.array(np.split(value.detach().cpu().numpy(), self.n_rollout_threads))
+    actions = np.array(np.split(action.detach().cpu().numpy(), self.n_rollout_threads))
+    action_probs = np.array(np.split(action_probs, self.n_rollout_threads))
+    rnn_states = np.array(
+        np.split(rnn_states.detach().cpu().numpy(), self.n_rollout_threads)
+    )
+    rnn_states_critic = np.array(
+        np.split(rnn_states_critic.detach().cpu().numpy(), self.n_rollout_threads)
+    )
+
+    _ensure_runner_attack_state(self)
+    actions, stats = _poison_discrete_action_batch(
+        actions,
+        action_probs,
+        self.envs.action_space,
+        self.attack_config,
+        self._action_poisoning_rng,
+    )
+    _record_runner_attack_stats(self, stats)
+    action_log_probs = _action_log_probs_from_probs(action_probs, actions)
+
+    if self.envs.action_space[0].__class__.__name__ == "Discrete":
+        actions_env = np.squeeze(np.eye(self.envs.action_space[0].n)[actions], 2)
+    else:
+        raise NotImplementedError("Action poisoning currently supports Discrete actions only.")
+
+    return values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env
+
+
+@torch.no_grad()
+def _collect_separated_with_action_poisoning(self, step):
+    values = []
+    actions = []
+    action_probs = []
+    rnn_states = []
+    rnn_states_critic = []
+
+    for agent_id in range(self.num_agents):
+        self.trainer[agent_id].prep_rollout()
+        obs = self.buffer[agent_id].obs[step]
+        actor_rnn_states = self.buffer[agent_id].rnn_states[step]
+        masks = self.buffer[agent_id].masks[step]
+        agent_probs = _actor_discrete_action_probs(
+            self.trainer[agent_id].policy.actor,
+            obs,
+            actor_rnn_states,
+            masks,
+        )
+        value, action, _, rnn_state, rnn_state_critic = (
+            self.trainer[agent_id].policy.get_actions(
+                self.buffer[agent_id].share_obs[step],
+                obs,
+                actor_rnn_states,
+                self.buffer[agent_id].rnn_states_critic[step],
+                masks,
+            )
+        )
+        values.append(value.detach().cpu().numpy())
+        actions.append(action.detach().cpu().numpy())
+        action_probs.append(agent_probs)
+        rnn_states.append(rnn_state.detach().cpu().numpy())
+        rnn_states_critic.append(rnn_state_critic.detach().cpu().numpy())
+
+    values = np.array(values).transpose(1, 0, 2)
+    actions = np.array(actions).transpose(1, 0, 2)
+    action_probs = np.array(action_probs).transpose(1, 0, 2)
+    rnn_states = np.array(rnn_states).transpose(1, 0, 2, 3)
+    rnn_states_critic = np.array(rnn_states_critic).transpose(1, 0, 2, 3)
+
+    _ensure_runner_attack_state(self)
+    actions, stats = _poison_discrete_action_batch(
+        actions,
+        action_probs,
+        self.envs.action_space,
+        self.attack_config,
+        self._action_poisoning_rng,
+    )
+    _record_runner_attack_stats(self, stats)
+    action_log_probs = _action_log_probs_from_probs(action_probs, actions)
+
+    actions_env = []
+    for env_idx in range(self.n_rollout_threads):
+        one_hot_action_env = []
+        for agent_idx in range(self.num_agents):
+            action_space = self.envs.action_space[agent_idx]
+            if action_space.__class__.__name__ != "Discrete":
+                raise NotImplementedError(
+                    "Action poisoning currently supports Discrete actions only."
+                )
+            action_idx = int(actions[env_idx, agent_idx, 0])
+            one_hot_action_env.append(np.eye(action_space.n)[action_idx])
+        actions_env.append(one_hot_action_env)
+
+    return values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env
 
 
 def _ensure_output_dirs(config: ExperimentConfig) -> dict[str, Path]:
@@ -361,6 +768,18 @@ def train_mappo_clean_baseline(
             "run_dir": paths["checkpoint_root"],
         }
     )
+    if _should_apply_action_poisoning(config):
+        runner.attack_config = config.attack
+        if args.share_policy:
+            runner.collect = types.MethodType(
+                _collect_shared_with_action_poisoning,
+                runner,
+            )
+        else:
+            runner.collect = types.MethodType(
+                _collect_separated_with_action_poisoning,
+                runner,
+            )
 
     try:
         runner.run()
@@ -372,7 +791,10 @@ def train_mappo_clean_baseline(
             runner.writter.export_scalars_to_json(Path(runner.log_dir) / "summary.json")
             runner.writter.close()
 
+    attack_summary = _runner_attack_summary(runner)
     summary = evaluate_mappo_model(model_path=paths["models"], config=config)
+    if attack_summary is not None:
+        summary["attack_summary"] = attack_summary
     evaluation_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     return {
@@ -381,6 +803,7 @@ def train_mappo_clean_baseline(
         "model_path": str(paths["models"]),
         "evaluation_path": str(evaluation_path),
         "config_snapshot_path": str(config_snapshot_path),
+        "attack_summary": attack_summary,
         "evaluation_summary": summary,
     }
 

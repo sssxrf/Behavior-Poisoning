@@ -65,12 +65,23 @@ class TrainingConfig:
 
 
 @dataclass
+class AttackConfig:
+    enabled: bool = False
+    mode: str = "none"
+    compromised_agent: int = 0
+    probability: float = 0.0
+    target_action: int = 0
+    kl_budget: float | None = None
+
+
+@dataclass
 class ExperimentConfig:
     project_name: str = "behavior-poisoning"
     seed: int = 7
     output_dir: str = "results"
     env: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+    attack: AttackConfig = field(default_factory=AttackConfig)
 
 
 def _dataclass_from_dict(cls, raw: dict[str, Any] | None):
@@ -89,6 +100,7 @@ def load_config(path: str | Path) -> ExperimentConfig:
         output_dir=raw.get("output_dir", "results"),
         env=_dataclass_from_dict(EnvironmentConfig, raw.get("env")),
         training=_dataclass_from_dict(TrainingConfig, raw.get("training")),
+        attack=_dataclass_from_dict(AttackConfig, raw.get("attack")),
     )
 
 

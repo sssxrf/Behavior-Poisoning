@@ -1,4 +1,5 @@
 .venv/
+.mappo_upstream/
 __pycache__/
 *.pyc
 *.pyo
@@ -9,6 +10,7 @@ __pycache__/
 results/checkpoints/*
 results/eval/*
 results/logs/*
+results/analysis/*
 !results/checkpoints/.gitkeep
 !results/eval/.gitkeep
 !results/logs/.gitkeep
