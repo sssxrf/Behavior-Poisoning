@@ -1,0 +1,6 @@
+"seed","random_degradation","targeted_degradation","kl_degradation","random_hurts","targeted_hurts","kl_hurts","any_attack_hurts","all_attacks_hurt","targeted_worse_than_random"
+"7","-13.4798911511898","0.940410673618317","1.03802534937859","False","True","True","True","False","True"
+"13","-5.1717141866684","-9.68982642889023","-14.571682959795","False","False","False","False","False","False"
+"21","8.57273104786873","4.04316094517708","34.3535920083523","True","True","True","True","True","False"
+"31","-22.5862505435944","-16.3138194382191","-14.1076032519341","False","False","False","False","False","True"
+"37","-6.10916033387184","-14.3035763204098","5.62193471193314","False","False","True","True","False","False"

@@ -36,6 +36,27 @@ def _occupied_landmarks(env) -> int | None:
         return None
 
 
+def _agent_collision_pair_count(env) -> int | None:
+    try:
+        unwrapped = env.unwrapped
+        world = unwrapped.world
+        agents = world.agents
+        collisions = 0
+        for first_idx, first_agent in enumerate(agents):
+            if not first_agent.collide:
+                continue
+            for second_agent in agents[first_idx + 1 :]:
+                if not second_agent.collide:
+                    continue
+                delta = first_agent.state.p_pos - second_agent.state.p_pos
+                distance = float(np.sqrt(np.sum(np.square(delta))))
+                if distance < first_agent.size + second_agent.size:
+                    collisions += 1
+        return collisions
+    except Exception:
+        return None
+
+
 def _evaluate_ppo_model(
     *,
     model_path: str | Path,
@@ -61,6 +82,10 @@ def _evaluate_ppo_model(
     episode_lengths: list[int] = []
     episode_final_occupied_landmarks: list[int] = []
     episode_max_occupied_landmarks: list[int] = []
+    episode_collision_pair_events: list[int] = []
+    episode_collision_step_rates: list[float] = []
+    episode_final_collision_pairs: list[int] = []
+    episode_max_collision_pairs: list[int] = []
     per_agent_rewards: dict[str, list[float]] = defaultdict(list)
 
     for episode_idx in range(episodes):
@@ -73,6 +98,9 @@ def _evaluate_ppo_model(
         agent_reward_totals: dict[str, float] = defaultdict(float)
         steps = 0
         max_occupied_landmarks = 0
+        collision_pair_events = 0
+        collision_steps = 0
+        max_collision_pairs = 0
 
         while env.agents:
             actions = {
@@ -94,6 +122,12 @@ def _evaluate_ppo_model(
                     max_occupied_landmarks,
                     occupied_landmarks,
                 )
+            collision_pairs = _agent_collision_pair_count(env)
+            if collision_pairs is not None:
+                collision_pair_events += collision_pairs
+                if collision_pairs > 0:
+                    collision_steps += 1
+                max_collision_pairs = max(max_collision_pairs, collision_pairs)
 
             for agent, reward in rewards.items():
                 agent_reward_totals[agent] += float(reward)
@@ -107,6 +141,12 @@ def _evaluate_ppo_model(
         if final_occupied_landmarks is not None:
             episode_final_occupied_landmarks.append(final_occupied_landmarks)
             episode_max_occupied_landmarks.append(max_occupied_landmarks)
+        final_collision_pairs = _agent_collision_pair_count(env)
+        if final_collision_pairs is not None:
+            episode_collision_pair_events.append(collision_pair_events)
+            episode_collision_step_rates.append(collision_steps / steps if steps else 0.0)
+            episode_final_collision_pairs.append(final_collision_pairs)
+            episode_max_collision_pairs.append(max_collision_pairs)
 
         for agent, reward_total in agent_reward_totals.items():
             per_agent_rewards[agent].append(reward_total)
@@ -138,6 +178,22 @@ def _evaluate_ppo_model(
         else None,
         "final_occupied_landmarks": episode_final_occupied_landmarks,
         "max_occupied_landmarks": episode_max_occupied_landmarks,
+        "collision_pair_events_mean": mean(episode_collision_pair_events)
+        if episode_collision_pair_events
+        else None,
+        "collision_step_rate_mean": mean(episode_collision_step_rates)
+        if episode_collision_step_rates
+        else None,
+        "final_collision_pairs_mean": mean(episode_final_collision_pairs)
+        if episode_final_collision_pairs
+        else None,
+        "max_collision_pairs_mean": mean(episode_max_collision_pairs)
+        if episode_max_collision_pairs
+        else None,
+        "collision_pair_events": episode_collision_pair_events,
+        "collision_step_rates": episode_collision_step_rates,
+        "final_collision_pairs": episode_final_collision_pairs,
+        "max_collision_pairs": episode_max_collision_pairs,
     }
 
 

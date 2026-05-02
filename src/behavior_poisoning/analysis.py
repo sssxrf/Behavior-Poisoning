@@ -11,7 +11,7 @@ from behavior_poisoning.evaluate import evaluate_saved_model
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ANALYSIS_DIR = REPO_ROOT / "results" / "analysis"
+DEFAULT_ANALYSIS_DIR = REPO_ROOT / "probability_comparison_results"
 
 
 @dataclass(frozen=True)
@@ -29,17 +29,23 @@ DEFAULT_EXPERIMENTS = [
         name="clean_rmappo",
         label="Clean RMAPPO",
         config_path=REPO_ROOT / "configs" / "clean_mappo.yaml",
-        model_path=REPO_ROOT / "results" / "checkpoints" / "clean_rmappo_seed7",
-        summary_path=REPO_ROOT / "results" / "eval" / "clean_rmappo_seed7_summary.json",
+        model_path=REPO_ROOT / "seed_sweep_p01_results" / "checkpoints" / "clean_rmappo_seed7",
+        summary_path=REPO_ROOT
+        / "seed_sweep_p01_results"
+        / "eval"
+        / "clean_rmappo_seed7_summary.json",
         order=0,
     ),
     ExperimentSpec(
         name="random_action_poison",
         label="Random Action",
         config_path=REPO_ROOT / "configs" / "random_action_poisoning_mappo.yaml",
-        model_path=REPO_ROOT / "results" / "checkpoints" / "random_action_poison_rmappo_seed7",
+        model_path=REPO_ROOT
+        / "seed_sweep_p01_results"
+        / "checkpoints"
+        / "random_action_poison_rmappo_seed7",
         summary_path=REPO_ROOT
-        / "results"
+        / "seed_sweep_p01_results"
         / "eval"
         / "random_action_poison_rmappo_seed7_summary.json",
         order=1,
@@ -49,11 +55,11 @@ DEFAULT_EXPERIMENTS = [
         label="Targeted Action",
         config_path=REPO_ROOT / "configs" / "targeted_action_poisoning_mappo.yaml",
         model_path=REPO_ROOT
-        / "results"
+        / "seed_sweep_p01_results"
         / "checkpoints"
         / "targeted_action_poison_rmappo_seed7",
         summary_path=REPO_ROOT
-        / "results"
+        / "seed_sweep_p01_results"
         / "eval"
         / "targeted_action_poison_rmappo_seed7_summary.json",
         order=2,
@@ -65,11 +71,11 @@ DEFAULT_EXPERIMENTS = [
         / "configs"
         / "kl_constrained_targeted_action_mappo.yaml",
         model_path=REPO_ROOT
-        / "results"
+        / "seed_sweep_p01_results"
         / "checkpoints"
         / "kl_targeted_action_poison_rmappo_seed7",
         summary_path=REPO_ROOT
-        / "results"
+        / "seed_sweep_p01_results"
         / "eval"
         / "kl_targeted_action_poison_rmappo_seed7_summary.json",
         order=3,
@@ -130,6 +136,16 @@ def build_comparison_records(
                 "final_unique_landmarks_mean",
             ),
             "max_unique_landmarks_mean": _metric(summary, "max_unique_landmarks_mean"),
+            "collision_pair_events_mean": _metric(
+                summary,
+                "collision_pair_events_mean",
+            ),
+            "collision_step_rate_mean": _metric(summary, "collision_step_rate_mean"),
+            "final_collision_pairs_mean": _metric(
+                summary,
+                "final_collision_pairs_mean",
+            ),
+            "max_collision_pairs_mean": _metric(summary, "max_collision_pairs_mean"),
             "poisoned_action_count": _attack_summary_value(
                 summary,
                 "poisoned_action_count",
@@ -200,6 +216,11 @@ def write_plots(records: list[dict[str, Any]], output_dir: Path) -> dict[str, st
         "final_min_distance_sum_mean",
         "final_min_distance_sum_mean.png",
         "Final landmark min-distance sum",
+    )
+    barplot(
+        "collision_pair_events_mean",
+        "collision_pair_events_mean.png",
+        "Mean collision pair events per episode",
     )
     return plot_paths
 

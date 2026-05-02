@@ -1,0 +1,4 @@
+"requested_poison_probability","num_seeds","random_mean_degradation","targeted_mean_degradation","kl_mean_degradation","any_attack_hurts_seeds","all_attacks_hurt_seeds","random_hurts_seeds","targeted_hurts_seeds","kl_hurts_seeds","targeted_worse_than_random_seeds"
+"0.1","5","9.431251120567321","-0.20933158993721007","4.579081356525421","5","3","4","3","4","1"
+"0.2","5","0.6541697919368744","1.6570026516914367","3.38793950676918","4","2","2","3","3","3"
+"0.3","5","-7.754857033491135","-7.064730113744735","2.4668531715869904","3","1","1","2","3","2"

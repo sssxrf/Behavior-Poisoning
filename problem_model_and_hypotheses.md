@@ -116,10 +116,11 @@ Once the population has adapted to poisoned trajectories, removing the attacker 
 - average episode length
 - reward trend during training
 - final evaluation reward after training
+- collision pair events per episode
+- collision step rate
 
-### Secondary Metrics for Later Attack Experiments
+### Secondary Metrics
 
-- collision count
 - landmark coverage or occupancy quality
 - KL divergence between clean and attacked action distributions
 - persistence score after the attack is disabled
@@ -136,4 +137,4 @@ The first working milestone in this repo is:
 Once this baseline is stable, we can add:
 
 1. full-length comparison runs across clean, random-poisoned, targeted-poisoned, and KL-constrained training
-2. report figures and persistence analysis from `results/analysis`
+2. report corrected probability-sweep comparisons from `seed_sweep_p01_results`, `seed_sweep_p02_results`, and `probability_comparison_results`

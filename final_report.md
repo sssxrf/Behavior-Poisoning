@@ -4,7 +4,7 @@
 
 This project studies behavior poisoning in cooperative multi-agent reinforcement learning (MARL). Instead of corrupting rewards, observations, or offline replay data, the attacker controls one compromised agent's live action selection during training. The goal is to bias the training trajectory distribution so that the final learned team policy converges to a worse coordination behavior even after the attack is removed.
 
-Experiments are conducted in the PettingZoo `simple_spread_v3` task using a shared-policy recurrent MAPPO baseline. Three poisoning settings are evaluated: random action poisoning, targeted action poisoning, and KL-constrained targeted action poisoning. The results show that all poisoning variants reduce final team performance relative to clean RMAPPO, and the degradation persists when the saved poisoned policies are evaluated with the attack disabled. In the current single-seed experiment, clean RMAPPO achieves a mean team reward of `-488.44`, while random, targeted, and KL-constrained targeted poisoning achieve `-655.80`, `-668.94`, and `-732.61`, respectively. Persistence evaluation over 8 clean episodes further shows that poisoned checkpoints remain substantially worse than the clean checkpoint.
+Experiments are conducted in the PettingZoo `simple_spread_v3` task using a shared-policy recurrent MAPPO baseline. Three poisoning settings are evaluated: random action poisoning, targeted action poisoning, and KL-constrained targeted action poisoning. The corrected five-seed comparison trains all clean and poisoned runs for `500000` timesteps. With `p = 0.1`, at least one attack hurts clean performance in all five seeds, but not every attack is consistently harmful. With `p = 0.2`, the average degradation remains small and seed-sensitive. The current evidence supports the implementation and plausibility of behavior poisoning, while showing that stronger statistical claims require more seeds, target-action sweeps, and confidence intervals.
 
 ## 1. Introduction
 
@@ -89,7 +89,7 @@ All main experiments use the same environment and MAPPO training configuration:
 - Algorithm: shared-policy recurrent MAPPO (`rmappo`)
 - Training timesteps: `500000`
 - Evaluation episodes: `32`
-- Seed: `7`
+- Seeds: `7`, `13`, `21`, `31`, `37`
 - Rollout threads: `16`
 - Evaluation rollout threads: `4`
 - Hidden size: `64`
@@ -112,79 +112,127 @@ Primary metrics:
 - Final landmark min-distance sum
 - Final unique landmarks covered
 - Maximum unique landmarks reached during the episode
+- Collision pair events per episode
+- Collision step rate
 
-The persistence evaluation reloads each saved checkpoint, disables the attack, and evaluates the learned policy cleanly for 8 episodes.
+All reported evaluations disable the attack, so they measure the learned policy after poisoned training rather than live test-time sabotage.
 
 ## 7. Results
 
-### 7.1 Main Evaluation
+### 7.1 Seed-7 Check
 
-The main 32-episode evaluation shows clear degradation from all poisoning variants.
+The seed-7 `p = 0.1` run trains all four conditions for `500000` timesteps and evaluates each checkpoint cleanly for 32 episodes:
 
-| Run | Mean Team Reward | Reward Std | Degradation vs Clean | Final Min-Distance | Final Unique Landmarks | Max Unique Landmarks |
-|---|---:|---:|---:|---:|---:|---:|
-| Clean RMAPPO | -488.44 | 71.03 | 0.00 | 0.96 | 2.44 | 2.75 |
-| Random Action | -655.80 | 159.81 | 167.35 | 2.25 | 1.97 | 2.34 |
-| Targeted Action | -668.94 | 146.04 | 180.50 | 2.43 | 1.88 | 2.31 |
-| KL Targeted Action | -732.61 | 183.91 | 244.17 | 3.10 | 1.88 | 2.44 |
+| Run | Mean Team Reward | Degradation vs Clean | Poisoned Actions | Effective Probability |
+|---|---:|---:|---:|---:|
+| Clean RMAPPO | -488.44 | 0.00 | - | - |
+| Random Action | -501.91 | 13.47 | 49984 | 0.100 |
+| Targeted Action | -512.80 | 24.36 | 49956 | 0.100 |
+| KL Targeted Action | -501.94 | 13.50 | 28670 | 0.057 |
 
-Clean RMAPPO performs best under all primary metrics. The poisoned policies have lower mean reward, higher final landmark distance, and lower final unique landmark coverage. This supports H2 and H3: poisoning one agent during training can degrade the final learned team behavior, and the targeted attack is worse than the random action baseline in this run.
+This result shows poisoning harm for seed `7`, with targeted action poisoning producing the largest degradation in this seed.
 
-The KL-constrained targeted attack shows the largest degradation in this single-seed experiment. This supports H4, although additional seeds would be needed before making a strong general claim about KL-constrained attacks being consistently strongest.
+### 7.2 p = 0.1 Sweep
 
-Generated plots:
+The `p = 0.1` evidence combines five seeds: seed `7`, correctly trained seeds `13` and `21`, and 32-episode seeds `31` and `37`. For seeds `13` and `21`, the comparison uses the first 32 clean-evaluation episodes from their existing 100-episode summaries so the evaluation horizon matches the other rows.
 
-- `results/analysis/team_reward_mean.png`
-- `results/analysis/reward_degradation_vs_clean.png`
-- `results/analysis/final_min_distance_sum_mean.png`
+| Seed | Random Degradation | Targeted Degradation | KL Degradation | Interpretation |
+|---:|---:|---:|---:|---|
+| 7 | 13.47 | 24.36 | 13.50 | all attacks hurt |
+| 13 | 9.46 | 1.25 | 13.85 | all attacks hurt |
+| 21 | 22.46 | 14.74 | 3.85 | all attacks hurt |
+| 31 | 2.59 | -28.71 | -24.00 | only random hurts |
+| 37 | -0.83 | -12.69 | 15.70 | only KL hurts |
 
-### 7.2 Persistence Evaluation
+Across these five seeds, at least one attack hurts clean performance in `5/5` seeds, all three attacks hurt in `3/5` seeds, random poisoning hurts in `4/5` seeds, targeted poisoning hurts in `3/5` seeds, and KL-constrained poisoning hurts in `4/5` seeds. Targeted poisoning is worse than random poisoning in only `1/5` seeds.
 
-The persistence evaluation disables the attack and evaluates the saved checkpoints cleanly for 8 episodes. The poisoned checkpoints remain worse than the clean checkpoint.
+Average degradation at `p = 0.1` is:
 
-| Run | Mean Team Reward | Reward Std | Degradation vs Clean | Final Min-Distance | Final Unique Landmarks | Max Unique Landmarks |
-|---|---:|---:|---:|---:|---:|---:|
-| Clean RMAPPO | -485.37 | 41.67 | 0.00 | 0.82 | 2.63 | 3.00 |
-| Random Action | -703.29 | 215.78 | 217.92 | 2.46 | 1.88 | 2.38 |
-| Targeted Action | -708.71 | 134.25 | 223.34 | 2.39 | 1.50 | 2.25 |
-| KL Targeted Action | -815.79 | 332.61 | 330.42 | 3.35 | 2.00 | 2.25 |
+| Attack | Mean Degradation vs Clean |
+|---|---:|
+| Random Action | 9.43 |
+| Targeted Action | -0.21 |
+| KL Targeted Action | 4.58 |
 
-This supports H5. The poisoned policies do not recover simply because the attack is removed at evaluation time. Instead, the training process appears to have learned weaker coordination behavior from poisoned rollout data.
+### 7.3 p = 0.2 Sweep and Budget Comparison
 
-Generated persistence plots:
+The `p = 0.2` sweep repeats the same five seeds with the unconstrained attack probability doubled. Random and targeted attacks perform roughly twice as many interventions, while the KL-constrained attack is throttled to an effective probability around `0.07` to `0.08`.
 
-- `results/analysis/persistence/team_reward_mean.png`
-- `results/analysis/persistence/reward_degradation_vs_clean.png`
-- `results/analysis/persistence/final_min_distance_sum_mean.png`
+| Seed | Random Degradation | Targeted Degradation | KL Degradation | Interpretation |
+|---:|---:|---:|---:|---|
+| 7 | 31.40 | 30.31 | 9.44 | all attacks hurt |
+| 13 | -12.14 | -11.24 | 7.69 | only KL hurts |
+| 21 | 7.54 | 10.39 | 9.70 | all attacks hurt |
+| 31 | -9.70 | -33.60 | -5.65 | no attack hurts |
+| 37 | -13.83 | 12.44 | -4.23 | only targeted hurts |
+
+Across five seeds, at least one attack hurts in `4/5` seeds, all three attacks hurt in `2/5` seeds, random poisoning hurts in `2/5` seeds, targeted poisoning hurts in `3/5` seeds, and KL-constrained poisoning hurts in `3/5` seeds. Targeted poisoning is worse than random poisoning in `3/5` seeds.
+
+Average degradation at `p = 0.2` is:
+
+| Attack | Mean Degradation vs Clean |
+|---|---:|
+| Random Action | 0.65 |
+| Targeted Action | 1.66 |
+| KL Targeted Action | 3.39 |
+
+The comparison does not show monotonic damage from increasing `p`. Doubling the attack probability makes some seeds worse, especially seed `7`, but improves or stabilizes others. This is plausible in MAPPO because training is stochastic and because action noise can sometimes behave like exploration or regularization. It also means the current target action, `0`/no-op, is not a consistently damaging target.
+
+Generated corrected comparison outputs:
+
+- `probability_comparison_results/p01_corrected_records.csv`
+- `probability_comparison_results/p02_records.csv`
+- `probability_comparison_results/p01_vs_p02_by_seed.csv`
+- `probability_comparison_results/probability_summary.csv`
+- `probability_comparison_results/collision_summary.csv`
+- `probability_comparison_results/collision_by_seed.csv`
+
+### 7.4 Collision Metric
+
+The environment already penalizes agent-agent collisions in the reward. The refreshed evaluation summaries now expose this directly as `collision_pair_events_mean`, the average number of pairwise agent collisions per episode. With three agents there are three possible collision pairs at each step: `(0, 1)`, `(0, 2)`, and `(1, 2)`.
+
+| p | Run | Mean Collision Events | Delta vs Clean | Collision Step Rate |
+|---:|---|---:|---:|---:|
+| 0.1 | Clean RMAPPO | 2.03 | 0.00 | 0.078 |
+| 0.1 | Random Action | 1.75 | -0.28 | 0.069 |
+| 0.1 | Targeted Action | 1.49 | -0.53 | 0.059 |
+| 0.1 | KL Targeted Action | 1.74 | -0.28 | 0.069 |
+| 0.2 | Clean RMAPPO | 2.03 | 0.00 | 0.078 |
+| 0.2 | Random Action | 2.07 | 0.04 | 0.080 |
+| 0.2 | Targeted Action | 2.09 | 0.07 | 0.082 |
+| 0.2 | KL Targeted Action | 2.39 | 0.37 | 0.093 |
+
+The collision metric shows that reward degradation is not only a collision story. At `p = 0.1`, poisoned policies are worse in reward while producing fewer collisions on average, so their degradation mainly comes from poorer landmark coverage or coordination. At `p = 0.2`, collision events increase slightly for poisoned policies, especially KL-constrained poisoning, so collisions may contribute to degradation there.
 
 ## 8. Qualitative Visualization Notes
 
-Rendered single episodes can be misleading. A poisoned checkpoint may occasionally look visually better than the clean checkpoint because individual rollouts have high variance. For example, random action poisoning has a much worse 32-episode mean reward than clean RMAPPO, but some individual poisoned episodes still achieve reasonable behavior. Visual judgment also does not always match the reward metric: a policy can appear active or spread out while still ending farther from landmarks or failing to maintain coverage throughout the episode.
+Rendered single episodes can be misleading. A poisoned checkpoint may occasionally look visually better than the clean checkpoint because individual rollouts have high variance. Visual judgment also does not always match the reward metric: a policy can appear active or spread out while still ending farther from landmarks or failing to maintain coverage throughout the episode.
 
 Therefore, visual rollouts are useful for intuition and demonstration, but the report should rely on aggregate reward and distance metrics for claims.
 
 ## 9. Discussion
 
-The experiments show that action-level intervention during training is enough to damage cooperative learning. This is important because the attack does not require changing rewards, observations, or model parameters. It only changes one agent's behavior during data collection.
+The corrected experiments show that action-level intervention during training can damage cooperative learning in some seeds and attack modes. This is important because the attack does not require changing rewards, observations, or model parameters. It only changes one agent's behavior during data collection.
 
-Random action poisoning degrades performance by injecting unstructured noise. Targeted action poisoning performs slightly worse than random poisoning in the main evaluation, suggesting that consistent behavioral bias can be more damaging than random disruption. The KL-constrained targeted variant is strongest in the current run, showing that a constrained attack can still produce meaningful damage.
+The strongest corrected evidence is not that every poisoning method always hurts, but that the training pipeline is sensitive to action-level intervention. At `p = 0.1`, at least one attack hurts clean performance in every seed, and all three attacks hurt in three of five seeds. At `p = 0.2`, the effect remains mixed: seed `7` and seed `21` clearly degrade, but seed `31` improves under all three attacks.
 
-The persistence results are especially important. Since the attack is disabled during persistence evaluation, poor performance reflects the learned policy rather than immediate action sabotage. This supports the interpretation that poisoned training can move the system toward a worse coordination pattern.
+Since the attack is disabled during evaluation, poor performance reflects the learned policy rather than immediate action sabotage. This supports the interpretation that poisoned training can move the system toward a worse coordination pattern when the attack and seed interact unfavorably.
+
+The seed sweep adds an important caveat: the poisoning effect is sensitive to seed, target action, and probability. This makes the current project a working demonstration and measurement harness, not yet a statistically complete claim about which attack is strongest.
 
 ## 10. Limitations
 
-The current results should be interpreted as strong initial evidence rather than a final statistical conclusion.
+The current results should be interpreted as initial evidence rather than a final statistical conclusion.
 
 Main limitations:
 
-- Experiments are currently reported for a single seed.
 - The clean RMAPPO baseline is good but not perfect.
-- Persistence evaluation uses 8 episodes, which is useful but still small.
-- Random and targeted attack summaries do not include logged intervention counts in the current saved summaries, likely because those checkpoints were produced before the newest attack-stat logging was added.
-- The KL-constrained result is strongest in this run, but more seeds are needed to determine whether that ordering is stable.
+- The comparison uses five seeds, which is still too small for strong confidence intervals.
+- The attack target is fixed to action `0`; this no-op target is not consistently damaging and sometimes appears to help.
+- The relationship between poison probability and degradation is not monotonic in the current runs.
 - The project does not implement a defense or detection method.
 
-Future work should run multiple seeds, retrain all attacks with current logging, and test additional target actions and intervention probabilities.
+Future work should extend the seed sweep, test additional target actions and intervention probabilities, and report confidence intervals.
 
 ## 11. Reproducibility
 
@@ -221,22 +269,28 @@ Run KL-constrained targeted poisoning:
 .\.venv\Scripts\python.exe .\scripts\train_clean.py --config .\configs\kl_constrained_targeted_action_mappo.yaml
 ```
 
-Generate comparison and persistence analysis:
+Run the current seed-sweep helper with a probability override:
 
 ```powershell
-.\.venv\Scripts\python.exe .\scripts\analyze_experiments.py --refresh-persistence --persistence-episodes 8
+.\.venv\Scripts\python.exe .\scripts\run_training_seed_sweep.py --seeds 7 13 21 31 37 --evaluation-episodes 32 --attack-probability 0.1 --output-dir .\seed_sweep_p01_results
+```
+
+Run the `p = 0.2` comparison:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\run_training_seed_sweep.py --seeds 7 13 21 31 37 --evaluation-episodes 32 --attack-probability 0.2 --output-dir .\seed_sweep_p02_results
 ```
 
 Render a clean policy:
 
 ```powershell
-.\.venv\Scripts\python.exe .\scripts\evaluate_clean.py --config .\configs\clean_mappo.yaml --model-path .\results\checkpoints\clean_rmappo_seed7 --episodes 1 --render --step-delay 0.12
+.\.venv\Scripts\python.exe .\scripts\evaluate_clean.py --config .\seed_sweep_p01_results\generated_configs\clean_mappo_seed7.yaml --model-path .\seed_sweep_p01_results\checkpoints\clean_rmappo_seed7 --episodes 1 --render --step-delay 0.12
 ```
 
 Render a poisoned checkpoint with attack disabled:
 
 ```powershell
-.\.venv\Scripts\python.exe .\scripts\evaluate_clean.py --config .\configs\kl_constrained_targeted_action_mappo.yaml --model-path .\results\checkpoints\kl_targeted_action_poison_rmappo_seed7 --episodes 1 --render --step-delay 0.12
+.\.venv\Scripts\python.exe .\scripts\evaluate_clean.py --config .\seed_sweep_p02_results\generated_configs\kl_constrained_targeted_action_mappo_seed7.yaml --model-path .\seed_sweep_p02_results\checkpoints\kl_targeted_action_poison_rmappo_seed7 --episodes 1 --render --step-delay 0.12
 ```
 
 Run tests:
@@ -247,6 +301,6 @@ Run tests:
 
 ## 12. Conclusion
 
-This project demonstrates that behavior poisoning through live action manipulation can degrade cooperative MARL training. In `simple_spread_v3`, controlling one agent's action during MAPPO rollout collection causes the final learned policy to perform worse under clean evaluation. The degradation appears in both reward and coordination metrics, and it persists after the attack is removed.
+This project demonstrates that behavior poisoning through live action manipulation can degrade cooperative MARL training, but the results are nuanced and seed-sensitive.
 
-The current evidence supports the central claim: poisoning the training behavior of a single agent can bias cooperative learning toward lower-quality coordination outcomes. The strongest next step is to rerun the clean and poisoned experiments across multiple seeds and include confidence intervals, but the implemented system and current results already provide a complete working demonstration of behavior poisoning in cooperative MARL.
+The current evidence supports a careful version of the central claim: poisoning the training behavior of a single agent can bias cooperative learning toward lower-quality coordination outcomes, but the default attack settings are not robust across seeds or probabilities. The strongest next step is to broaden the seed sweep and target-action sweep, then report confidence intervals. The implemented system and corrected results provide a reproducible harness for that next pass.

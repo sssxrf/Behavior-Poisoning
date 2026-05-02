@@ -1,0 +1,44 @@
+﻿{
+    "summary_rows":  [
+                         {
+                             "requested_poison_probability":  "0.1",
+                             "num_seeds":  5,
+                             "random_mean_degradation":  "9.431251120567321",
+                             "targeted_mean_degradation":  "-0.20933158993721007",
+                             "kl_mean_degradation":  "4.579081356525421",
+                             "any_attack_hurts_seeds":  5,
+                             "all_attacks_hurt_seeds":  3,
+                             "random_hurts_seeds":  4,
+                             "targeted_hurts_seeds":  3,
+                             "kl_hurts_seeds":  4,
+                             "targeted_worse_than_random_seeds":  1
+                         },
+                         {
+                             "requested_poison_probability":  "0.2",
+                             "num_seeds":  5,
+                             "random_mean_degradation":  "0.6541697919368744",
+                             "targeted_mean_degradation":  "1.6570026516914367",
+                             "kl_mean_degradation":  "3.38793950676918",
+                             "any_attack_hurts_seeds":  4,
+                             "all_attacks_hurt_seeds":  2,
+                             "random_hurts_seeds":  2,
+                             "targeted_hurts_seeds":  3,
+                             "kl_hurts_seeds":  3,
+                             "targeted_worse_than_random_seeds":  3
+                         },
+                         {
+                             "requested_poison_probability":  "0.3",
+                             "num_seeds":  5,
+                             "random_mean_degradation":  "-7.754857033491135",
+                             "targeted_mean_degradation":  "-7.064730113744735",
+                             "kl_mean_degradation":  "2.4668531715869904",
+                             "any_attack_hurts_seeds":  3,
+                             "all_attacks_hurt_seeds":  1,
+                             "random_hurts_seeds":  1,
+                             "targeted_hurts_seeds":  2,
+                             "kl_hurts_seeds":  3,
+                             "targeted_worse_than_random_seeds":  2
+                         }
+                     ],
+    "note":  "Comparison including completed p=0.1, p=0.2, and p=0.3 five-seed sweeps. All rows use 32 clean-evaluation episodes."
+}

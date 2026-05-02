@@ -1,0 +1,58 @@
+project_name: behavior-poisoning
+seed: 7
+output_dir: seed_sweep_p02_results
+env:
+  num_agents: 3
+  num_landmarks: 3
+  local_ratio: 0.5
+  max_cycles: 25
+  continuous_actions: false
+training:
+  algorithm: rmappo
+  run_name: kl_targeted_action_poison_rmappo
+  total_timesteps: 500000
+  evaluation_episodes: 32
+  deterministic_eval: true
+  device: cpu
+  num_rollout_threads: 16
+  num_eval_rollout_threads: 4
+  num_training_threads: 1
+  save_interval: 25
+  log_interval: 5
+  eval_interval: 25
+  use_eval: true
+  use_linear_lr_decay: false
+  share_policy: true
+  use_centralized_v: true
+  use_agent_indicator: true
+  hidden_size: 64
+  recurrent_N: 1
+  data_chunk_length: 10
+  lr: 0.0007
+  critic_lr: 0.0007
+  ppo_epoch: 10
+  num_mini_batch: 1
+  clip_param: 0.2
+  entropy_coef: 0.01
+  value_loss_coef: 1.0
+  max_grad_norm: 10.0
+  gamma: 0.99
+  gae_lambda: 0.95
+  num_vec_envs: 8
+  learning_rate: 0.0003
+  n_steps: 256
+  batch_size: 1024
+  n_epochs: 10
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  net_arch:
+  - 128
+  - 128
+attack:
+  enabled: true
+  mode: targeted_action
+  compromised_agent: 0
+  probability: 0.2
+  target_action: 0
+  kl_budget: 0.02

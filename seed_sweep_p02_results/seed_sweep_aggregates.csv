@@ -1,0 +1,5 @@
+name,label,num_seeds,team_reward_mean_across_seeds,reward_degradation_mean_across_seeds,final_min_distance_sum_mean_across_seeds,final_unique_landmarks_mean_across_seeds,collision_pair_events_mean_across_seeds,collision_pair_events_delta_mean_across_seeds,collision_step_rate_mean_across_seeds
+clean_rmappo,Clean RMAPPO,5,-489.0713296711445,0.0,0.9438973234190833,2.5,2.025,0.0,0.078
+random_action_poison,Random Action,5,-489.72549946308135,0.6541697919368744,0.9647424523333379,2.48125,2.06875,0.04375,0.0795
+targeted_action_poison,Targeted Action,5,-490.7283323228359,1.6570026516914367,0.9914406551944855,2.44375,2.09375,0.06875,0.08174999999999999
+kl_targeted_action_poison,KL Targeted Action,5,-492.45926917791365,3.38793950676918,0.9702494359354462,2.6125,2.39375,0.36875,0.09275

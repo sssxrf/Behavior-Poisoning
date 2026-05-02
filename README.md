@@ -123,13 +123,7 @@ attack:
 ## Evaluate a Saved Model
 
 ```powershell
-.\.venv\Scripts\python .\scripts\evaluate_clean.py --config .\configs\clean_mappo.yaml --model-path .\results\checkpoints\clean_rmappo_seed7
-```
-
-Optional PPO fallback evaluation:
-
-```powershell
-.\.venv\Scripts\python .\scripts\evaluate_clean.py --config .\configs\clean_ppo.yaml --model-path .\results\checkpoints\clean_ppo_seed7.zip
+.\.venv\Scripts\python .\scripts\evaluate_clean.py --config .\seed_sweep_p01_results\generated_configs\clean_mappo_seed7.yaml --model-path .\seed_sweep_p01_results\checkpoints\clean_rmappo_seed7
 ```
 
 ## Smoke Checks
@@ -146,32 +140,52 @@ Short saved-checkpoint smoke check:
 .\.venv\Scripts\python .\scripts\smoke_check_saved_models.py --episodes 2
 ```
 
-## Compare Attack Runs
+## Run Seed Sweeps
 
-After training the clean, random, targeted, and KL-constrained checkpoints, build
-summary tables and plots:
-
-```powershell
-.\.venv\Scripts\python .\scripts\analyze_experiments.py
-```
-
-To re-evaluate each saved checkpoint with the attack disabled and write a
-post-attack persistence comparison:
+The current repo includes a seed-sweep helper that retrains the clean and three
+poisoned RMAPPO configs, writes resumable partial results, and records attack
+intervention counts for the poisoned runs:
 
 ```powershell
-.\.venv\Scripts\python .\scripts\analyze_experiments.py --refresh-persistence --persistence-episodes 8
+.\.venv\Scripts\python .\scripts\run_training_seed_sweep.py --seeds 13 21 --evaluation-episodes 100
 ```
 
-Outputs are written under `results\analysis\`.
+Override the attack probability for all poisoned configs without editing the base YAML files:
+
+```powershell
+.\.venv\Scripts\python .\scripts\run_training_seed_sweep.py --seeds 7 13 21 31 37 --evaluation-episodes 32 --attack-probability 0.2 --output-dir .\seed_sweep_p02_results
+```
+
+Outputs are written under the selected `--output-dir`, including:
+
+- `seed_sweep_summary.json`
+- `seed_sweep_records.csv`
+- `seed_sweep_aggregates.csv`
+
+Refresh saved checkpoints without retraining when evaluator metrics change:
+
+```powershell
+.\.venv\Scripts\python .\scripts\refresh_seed_sweep_metrics.py .\seed_sweep_p01_results .\seed_sweep_p02_results --episodes 32
+```
+
+Use the corrected seed-sweep outputs:
+
+- `seed_sweep_p01_results\`
+- `seed_sweep_p02_results\`
+- `probability_comparison_results\`
+
+The current evaluation summaries include reward, landmark coverage, and collision metrics. `collision_pair_events_mean` is the average number of pairwise agent-agent collisions per episode, and `collision_step_rate_mean` is the fraction of evaluation steps with at least one collision.
 
 ## Watch the Agents Move
 
 ```powershell
-.\.venv\Scripts\python .\scripts\evaluate_clean.py --config .\configs\clean_mappo.yaml --model-path .\results\checkpoints\clean_rmappo_seed7 --episodes 1 --render --step-delay 0.12
+.\.venv\Scripts\python .\scripts\evaluate_clean.py --config .\seed_sweep_p02_results\generated_configs\clean_mappo_seed7.yaml --model-path .\seed_sweep_p02_results\checkpoints\clean_rmappo_seed7 --episodes 1 --render --step-delay 0.12
 ```
 
 ## Next Extensions
 
-Once the action-poisoning baselines are trained, the next code addition should be:
+The corrected five-seed comparison shows seed-sensitive poisoning effects. The next useful extensions are:
 
-1. run full-length experiments and include the generated comparison tables/plots in the report
+1. extend the seed sweep enough to report confidence intervals
+2. sweep target actions instead of only using no-op action `0`
+3. test intervention probabilities beyond `0.1` and `0.2`

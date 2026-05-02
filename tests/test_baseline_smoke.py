@@ -9,6 +9,7 @@ from behavior_poisoning.config import load_config
 from behavior_poisoning.evaluate import evaluate_saved_model
 import behavior_poisoning.evaluate as evaluate_module
 from behavior_poisoning.mappo_clean import (
+    _agent_collision_pair_count,
     _kl_constrained_probability,
     _kl_divergence,
     _poison_discrete_actions,
@@ -20,6 +21,28 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIGS_ROOT = REPO_ROOT / "configs"
 
 
+class _FakeState:
+    def __init__(self, position):
+        self.p_pos = np.asarray(position, dtype=np.float32)
+
+
+class _FakeAgent:
+    def __init__(self, position, *, size=0.15, collide=True):
+        self.state = _FakeState(position)
+        self.size = size
+        self.collide = collide
+
+
+class _FakeWorld:
+    def __init__(self, agents):
+        self.agents = agents
+
+
+class _FakeEnv:
+    def __init__(self, agents):
+        self.world = _FakeWorld(agents)
+
+
 def test_clean_ppo_config_declares_ppo_algorithm() -> None:
     config = load_config(CONFIGS_ROOT / "clean_ppo.yaml")
     assert config.training.algorithm == "ppo"
@@ -28,6 +51,18 @@ def test_clean_ppo_config_declares_ppo_algorithm() -> None:
 def test_clean_mappo_config_declares_rmappo_algorithm() -> None:
     config = load_config(CONFIGS_ROOT / "clean_mappo.yaml")
     assert config.training.algorithm == "rmappo"
+
+
+def test_agent_collision_pair_count_counts_unique_pairs() -> None:
+    env = _FakeEnv(
+        [
+            _FakeAgent([0.0, 0.0]),
+            _FakeAgent([0.1, 0.0]),
+            _FakeAgent([0.8, 0.0]),
+        ]
+    )
+
+    assert _agent_collision_pair_count(env) == 1
 
 
 def test_random_action_poisoning_config_enables_random_attack() -> None:

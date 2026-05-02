@@ -1,0 +1,6 @@
+seed,random_degradation,targeted_degradation,kl_degradation,random_hurts,targeted_hurts,kl_hurts,any_attack_hurts,all_attacks_hurt,targeted_worse_than_random
+7,13.471665173768997,24.361111491918564,13.501763075590134,True,True,True,True,True,True
+13,9.461661547422409,1.2482853531837463,13.850008398294449,True,True,True,True,True,False
+21,22.46291372179985,14.736230254173279,3.848443329334259,True,True,True,True,True,False
+31,2.5888075828552246,-28.7061630487442,-24.00060385465622,True,False,False,True,False,False
+37,-0.8287924230098724,-12.686122000217438,15.695795834064484,False,False,True,True,False,False
