@@ -115,6 +115,21 @@ Primary metrics:
 - Collision pair events per episode
 - Collision step rate
 
+Reward degradation is a reward metric, not a distance metric:
+
+\[
+\text{degradation}_{seed, attack}
+= \overline{R}_{clean, seed} - \overline{R}_{attack, seed}.
+\]
+
+Positive degradation means the poisoned policy has lower mean team reward than the clean policy for the same seed. Negative degradation means the poisoned policy evaluates better than clean. The distance metric is reported separately as final landmark min-distance sum:
+
+\[
+\sum_{\ell \in \text{landmarks}} \min_i \lVert x_i - x_\ell \rVert_2.
+\]
+
+Lower final landmark min-distance sum means better landmark coverage.
+
 All reported evaluations disable the attack, so they measure the learned policy after poisoned training rather than live test-time sabotage.
 
 ## 7. Results
