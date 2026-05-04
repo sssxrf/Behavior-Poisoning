@@ -8,6 +8,9 @@
 - Replaced the core idea flow so it ends in "seed-dependent clean-evaluation outcome" rather than guaranteed degradation.
 
 ## Section Updates
+- Added richer presentation-oriented content while preserving the calibrated conclusion:
+  a compact core-idea flow, behavior-poisoning hook description, derived experimental grid,
+  matched-seed note, metric interpretation table, symbolic example, and reward decomposition.
 - Renamed the main result section to "Mixed Effects, Not Reliable Degradation."
 - Rewrote main result captions and interpretation bullets to distinguish `D > 0` degradation from `D < 0` improvement.
 - Rewrote the seed sensitivity caption to emphasize the red/blue mixture and the absence of stable degradation.
@@ -16,9 +19,18 @@
 - Rewrote the hypothesis table so reliable degradation, targeted dominance, and monotonic harm are not supported.
 - Rewrote takeaways and the final lesson to emphasize intermittent effects and exploratory conclusions.
 
+## Layout Changes
+- Kept the three-column structure with a single title/header and full-width key finding banner.
+- Enlarged and rebalanced the main result, seed sensitivity, and mechanism panels so the poster uses vertical space more fully.
+- Replaced the two small left-column text tables with one integrated TikZ illustration of the `simple_spread` task and training-time action replacement.
+- Removed the standalone illustration title and repositioned/shortened labels so the task diagram has no overlapping words while remaining larger than the original draft.
+- Removed the extra implementation-artifacts box during final fitting because it caused lower-right clipping.
+- Shortened the final takeaways/limitations text enough to keep the ending visible while retaining the cautious conclusion.
+
 ## Figure Changes
 - Regenerated the main degradation plot from the existing summary CSVs after changing its title to avoid "monotonic damage" wording.
 - Regenerated the heatmap after changing the colorbar label from "more harm" to "more degradation."
+- Enlarged the displayed main result plot, heatmap, and mechanism plots in the poster layout.
 - No numerical values were changed.
 
 ## Data and Claims
@@ -32,6 +44,9 @@
 ## Verification
 - Searched the source for overstrong terms such as vulnerability, harmful, damage, hurt, and permanent.
 - Compiled locally with MiKTeX `pdflatex`.
-- Rasterized the final PDF preview with `pdftoppm` and checked for clipping.
+- Rasterized the final PDF preview with `pdftoppm` and checked the revised `simple_spread` illustration for label overlap.
 - Checked the PDF text layer with `pdftotext`; the title appears once.
 - Verified the exported PDF is one page with `pdfinfo`.
+- Exported refreshed final copies to `763_Final_poster_richer.pdf` and `poster/763_Final_poster_richer.pdf`.
+- Exported the illustration revision to `763_Final_poster_with_simple_spread_illustration.pdf` and `poster/763_Final_poster_with_simple_spread_illustration.pdf`.
+- Refreshed the illustration PDF after the label-overlap fix.

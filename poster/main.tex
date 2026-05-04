@@ -10,7 +10,7 @@
 \usepackage{array}
 \usepackage{enumitem}
 \usepackage{uwtheme}
-\usetikzlibrary{arrows.meta,positioning}
+\usetikzlibrary{arrows.meta,positioning,calc}
 
 \tikzposterlatexaffectionproofoff
 \usetheme{UWTheme}
@@ -18,6 +18,9 @@
 
 \usepackage[scaled]{helvet}
 \renewcommand\familydefault{\sfdefault}
+\definecolor{RandomBlue}{HTML}{2E86AB}
+\definecolor{TargetOrange}{HTML}{F18F01}
+\definecolor{KLPurple}{HTML}{7B2CBF}
 \setlist[itemize]{leftmargin=1.0em,itemsep=0.02em,topsep=0.02em}
 \setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.12}
@@ -50,6 +53,7 @@
 \makeatother
 
 \newcommand{\tightcaption}[1]{\vspace{-0.42em}{\footnotesize\textbf{Caption.} #1}}
+\newcommand{\minihead}[1]{\vspace{0.08em}\textbf{#1}}
 
 \begin{document}
 \maketitle
@@ -59,45 +63,75 @@
 
 \begin{columns}
     \column{0.31}
+    \makeatletter\TP@blockverticalspace=4mm\makeatother
 
     \block{1. Motivation and Research Question}{
         In cooperative MARL, training data is not independent: each agent's learning signal depends on
         trajectories produced jointly with teammates. A compromised teammate can alter the training
         distribution for the whole team without touching rewards, observations, gradients, or weights.
+        This is subtle because the attack disappears at evaluation; any effect must be learned from
+        poisoned training rollouts.
 
         \innerblock{Research question}{
             Can action-level behavior poisoning during MAPPO rollout collection degrade final
             clean-evaluation performance in \texttt{simple\_spread}?
         }
 
-        \begin{center}
-        \scriptsize
-        \begin{tabular}{p{0.42\linewidth}p{0.46\linewidth}}
-            \toprule
-            Why behavior poisoning is subtle & Why it matters here \\
-            \midrule
-            Training-time only & Attack disappears at evaluation; any effect must be learned. \\
-            Low access & Attacker controls one agent's action, not the learner. \\
-            Team coupling & One bad teammate changes joint rollouts for all agents. \\
-            \bottomrule
-        \end{tabular}
-        \end{center}
-
         \textbf{Task.} In \texttt{simple\_spread}, three agents cover three landmarks while avoiding
         unnecessary collisions. Good coordination spreads agents across distinct landmarks.
 
-        \innerblock{Core idea}{
-            \centering
-            training-time action replacement $\rightarrow$ changed rollout distribution $\rightarrow$
-            seed-dependent clean-evaluation outcome
-        }
-        \vspace{0.85em}
+        \begin{center}
+\resizebox{0.72\linewidth}{!}{
+        \begin{tikzpicture}[
+            x=1cm, y=1cm,
+            agent/.style={circle, draw=RandomBlue!85!black, fill=RandomBlue!18, very thick,
+                          minimum size=0.62cm, inner sep=0pt, font=\bfseries\small},
+            landmark/.style={circle, draw=GreyDark, fill=GreyBlue!30, thick,
+                             minimum size=0.58cm, inner sep=0pt},
+            cleanarrow/.style={-{Latex[length=2.7mm]}, very thick, RandomBlue!85!black},
+            poisonarrow/.style={-{Latex[length=2.7mm]}, very thick, dashed, TargetOrange!95!black},
+            callout/.style={font=\scriptsize, align=center, text=black},
+            orangecallout/.style={font=\scriptsize, align=center, text=TargetOrange!95!black}
+        ]
+            \node[font=\scriptsize\bfseries, text=GreyDark] at (3.4,4.42)
+                {Goal: spread agents across landmarks};
+            \draw[rounded corners=6pt, line width=1.0pt, GreyDark, fill=white] (0,0) rectangle (6.8,4.15);
+
+            \node[landmark] (L0) at (1.15,3.20) {};
+            \node[font=\small] at (1.15,3.74) {L0};
+            \node[landmark] (L1) at (5.65,3.20) {};
+            \node[font=\small] at (5.65,3.74) {L1};
+            \node[landmark] (L2) at (4.15,1.05) {};
+            \node[font=\small] at (4.15,0.48) {L2};
+
+            \node[agent] (A0) at (1.25,1.05) {A0};
+            \node[agent] (A1) at (5.45,1.05) {A1};
+            \node[agent] (A2) at (3.35,3.25) {A2};
+            \draw[TargetOrange!95!black, very thick] (A0) circle (0.48);
+
+            \draw[cleanarrow] (A2.west) -- ++(-0.82,-0.05) -- (L0.east);
+            \draw[cleanarrow] (A1.north) -- (L1.south);
+            \draw[cleanarrow] (A0.east) -- (L2.west);
+            \draw[poisonarrow] (A0.north east) -- ++(0.85,0.95);
+
+            \node[orangecallout] at (2.55,2.36)
+                {training-time\\action replacement};
+    \node[orangecallout, anchor=west] at (0.05,-0.38)
+        {A0 training action may be replaced};
+    \node[callout, anchor=east] at (6.75,-0.38)
+        {Eval: gate OFF};
+        \end{tikzpicture}}
+        \end{center}
+
+        {\small\textbf{Core idea.} Training-time action replacement $\rightarrow$ changed rollout
+        distribution $\rightarrow$ seed-dependent clean-evaluation outcome.}
+        \vspace{0.2em}
 
     }
 
     \block{2. Threat Model and Attack Mechanics}{
         \begin{center}
-        \resizebox{0.58\linewidth}{!}{
+        \resizebox{0.39\linewidth}{!}{
         \begin{tikzpicture}[
             node distance=0.42cm,
             box/.style={draw=GreyDark, rounded corners=3pt, line width=0.8pt, align=center,
@@ -135,24 +169,26 @@
         }
         \vspace{-1.15em}
 
-        {\footnotesize\textbf{Hook.} Sample agent 0 action; sample $z_t$; replace if $z_t=1$; step
-        with modified joint action; update MAPPO. During evaluation set $z_t=0$.}
+        {\footnotesize\textbf{Hook.} At each rollout step, MAPPO samples $a_{0,t}$, the gate samples
+        $z_t\sim Bernoulli(p)$, and agent 0's action is replaced only when $z_t=1$. The environment
+        receives the modified joint action; MAPPO updates on that trajectory. Evaluation sets $z_t=0$,
+        so positive $D$ is learned, not test-time sabotage.}
 
-        \vspace{-0.35em}
-        \begin{center}
-        \tiny
-        \begin{tabular}{p{0.26\linewidth}p{0.64\linewidth}}
-            \toprule
-            Can control & Agent 0 action during training rollout collection \\
-            Cannot control & observations, rewards, parameters, gradients, update rule, evaluation actions \\
-            Objective/result & objective is $D>0$; observed $D$ is not consistently positive \\
-            \bottomrule
-        \end{tabular}
-        \end{center}
-        \vspace{0.85em}
+        \vspace{0.15em}
+        {\footnotesize\textbf{Attacker capability.} Replace agent 0's training-time action only; no
+        access to observations, rewards, parameters, gradients, update rule, or evaluation actions.}
+
+        {\footnotesize\textbf{Observed outcome.} The attacker wants $D>0$, but $D$ is not consistently
+        positive in the sweep.}
+        \vspace{-0.2em}
     }
 
     \block{3. Attack Variants and Experimental Grid}{
+        {\small\textbf{Experimental grid.} 5 clean baselines + $3$ attacks $\times$ $3$ poison
+        probabilities $\times$ $5$ seeds = 50 matched training runs. Each checkpoint uses 32
+        deterministic clean evaluation episodes. Matched seeds compare poisoned(seed $s$) against
+        clean(seed $s$).}
+
         \begin{center}
         \scriptsize
         \begin{tabular}{p{0.23\linewidth}p{0.34\linewidth}p{0.32\linewidth}}
@@ -165,15 +201,7 @@
             \bottomrule
         \end{tabular}
         \end{center}
-
-        \innerblock{Experimental grid}{
-            \small
-            5 clean baselines + $3$ attacks $\times$ $3$ poison probabilities $\times$ $5$ seeds
-            = 50 matched training runs. Each checkpoint uses 32 deterministic clean evaluation
-            episodes; $p \in \{0.1,0.2,0.3\}$ and attack is disabled during evaluation.
-            Matched seeds compare poisoned(seed $s$) against clean(seed $s$).
-        }
-        \vspace{2.2em}
+        \vspace{-0.2em}
     }
 
     \block{4. Metric and How to Read Degradation}{
@@ -183,37 +211,21 @@
             \]
         }
 
-        \begin{center}
-        \scriptsize
-        \begin{tabular}{p{0.20\linewidth}p{0.68\linewidth}}
-            \toprule
-            Value of $D$ & Meaning \\
-            \midrule
-            $D>0$ & poisoned policy evaluated worse than matched clean \\
-            $D=0$ & no matched-seed difference \\
-            $D<0$ & poisoned policy evaluated better than clean \\
-            \bottomrule
-        \end{tabular}
-        \end{center}
+        {\footnotesize
+        $D>0$: poisoned policy evaluated worse than matched clean. \quad
+        $D<0$: poisoned policy evaluated better.
 
-        \innerblock{Example}{
-            \small
-            If $R_{clean}=-120$ and $R_{poisoned}=-135$, then $D=15$ and the poisoned policy evaluated worse.
-            If $R_{poisoned}=-110$, then $D=-10$ and the poisoned policy evaluated better.
-        }
-
-        {\small
-        Reward: $R_t \approx -\sum_{\ell \in L}\min_i\lVert x_i-x_\ell\rVert_2-\lambda C_t$.
-        Rewards are usually negative, so closer to 0 is better. Coverage distance and collision
-        penalties both matter.
+        \textbf{Reward.} $R_t \approx -\sum_{\ell \in L}\min_i\lVert x_i-x_\ell\rVert_2-\lambda C_t$.
+        Rewards are usually negative, so closer to 0 is better. Bars show five-seed means; dots show matched seeds.
         }
     }
 
     \column{0.38}
+    \makeatletter\TP@blockverticalspace=15mm\makeatother
 
     \block{5. Main Result: Mixed Effects, Not Reliable Degradation}{
         \begin{center}
-            \includegraphics[width=0.82\linewidth]{figures/degradation_by_probability.png}
+            \includegraphics[width=0.92\linewidth]{figures/degradation_by_probability.png}
         \end{center}
         \tightcaption{Positive $D$ means the poisoned policy evaluated worse than the matched clean
         policy; negative $D$ means it evaluated better. Random and no-op are not reliably harmful
@@ -291,7 +303,7 @@
                 \item Robust rollout filtering and adversarial teammate training.
             \end{itemize}
         }
-        \vspace{0.85em}
+        \vspace{0.45em}
     }
 
     \block{8. Hypothesis Check}{
@@ -323,21 +335,17 @@
             \item Action-level poisoning is a plausible training-time threat model, but this sweep did not show reliable degradation.
             \item Some matched-seed settings degrade clean-evaluation reward; many show no degradation or improvement.
             \item The most robust finding is non-monotonic, seed-sensitive behavior rather than stable attack success.
-            \item Random and no-op poisoning improve on average at $p=0.3$, suggesting possible exploration or regularization.
-            \item KL-targeted has positive mean degradation at all tested $p$, but the heatmap shows seed dependence.
         \end{itemize}
 
-        \textbf{Limitations:} one environment; one compromised agent; three $p$ values; one no-op target action;
-        five seeds; no confidence intervals; no adaptive target search. Conclusions are exploratory.
+        \textbf{Limitations:} one environment; one compromised agent; three $p$ values; one no-op target;
+        five seeds; no confidence intervals. Conclusions are exploratory.
 
-        \textbf{Next steps:} add more seeds and confidence intervals before claiming reliable degradation; search
-        target actions; test harder environments; compare against benign noise; check whether KL averages persist.
+        \textbf{Next steps:} add seeds and confidence intervals; search target actions; compare against
+        benign noise; test whether KL averages persist.
 
         \innerblock{Main lesson}{
             The attack model is plausible, but observed degradation is intermittent rather than reliable.
         }
-
-        {\footnotesize Refs: Yu et al. 2022; Schulman et al. 2017; Lowe et al. 2017; Terry et al. 2021; Mordatch and Abbeel 2018.}
     }
 \end{columns}
 
